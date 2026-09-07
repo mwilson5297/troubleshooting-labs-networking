@@ -1,72 +1,50 @@
-# Troubleshooting Case 01 — Host in the Wrong Access VLAN
+# Troubleshooting Lab 01 — Wrong Access VLAN
 
-## Incident Summary
+For this lab I intentionally put PC2 in the wrong VLAN, then worked through the problem from the symptoms instead of immediately looking at the config.
 
-A user reports that PC2 cannot reach its default gateway or communicate with devices in VLAN 20. Other VLAN 20 hosts are working normally.
-
-## Expected State
+## Expected setup
 
 - PC2: `192.168.20.10/24`
 - Default gateway: `192.168.20.1`
-- PC2 switchport: access VLAN 20
-- VLAN 20 is active on the switch
+- PC2 switchport: VLAN 20
 
-## Symptoms
+## Symptom
+
+PC2 could not ping its gateway:
 
 ```text
 PC2> ping 192.168.20.1
 Request timed out.
 ```
 
-The failure affects one host rather than the entire VLAN, so the initial scope suggests a host-specific or access-layer problem.
+Other devices in VLAN 20 were working, so I knew the problem was probably local to PC2 or its switchport.
 
-## Investigation
+## What I checked
 
-### 1. Verify host addressing
+First I confirmed the IP address, subnet mask, and default gateway on PC2.
 
-PC2 has the expected IP address, mask, and gateway.
-
-### 2. Check interface state
+Then I checked the switch port:
 
 ```text
 show interfaces status
-```
-
-The connected switchport is physically up.
-
-### 3. Check VLAN membership
-
-```text
 show vlan brief
 ```
 
-Observed result:
+The interface was up, but `show vlan brief` showed the PC2 port under VLAN 10 instead of VLAN 20.
 
-```text
-10   USERS     active    Fa0/2
-20   SERVERS   active
-```
-
-PC2 is connected to `Fa0/2`, but the port appears under VLAN 10 rather than VLAN 20.
-
-### 4. Confirm switchport configuration
+I confirmed it with:
 
 ```text
 show interfaces fa0/2 switchport
 ```
 
-Relevant output indicates:
+The relevant line showed:
 
 ```text
-Administrative Mode: static access
 Access Mode VLAN: 10
 ```
 
-## Root Cause
-
-The PC2 access port was assigned to VLAN 10 instead of VLAN 20.
-
-## Remediation
+## Fix
 
 ```text
 configure terminal
@@ -76,36 +54,18 @@ interface fa0/2
 end
 ```
 
-## Validation
+## Verification
 
-```text
-show vlan brief
-```
+I checked `show vlan brief` again to make sure Fa0/2 moved to VLAN 20, then retried the ping to `192.168.20.1`.
 
-PC2's port should now appear under VLAN 20.
+## What I took away from it
 
-Then retest:
+The host had the right Layer 3 settings, but its switchport put the traffic into the wrong Layer 2 VLAN. Because the problem only affected one host, checking that host and its access port first was faster than changing anything on the router.
 
-```text
-PC2> ping 192.168.20.1
-```
+For a similar issue, my first checks would be:
 
-The ping should succeed.
-
-## Why the Failure Occurred
-
-An access port places untagged host traffic into its configured VLAN. Even though PC2 had a valid `192.168.20.0/24` IP configuration, the switch was placing its Ethernet frames into VLAN 10. That separated PC2 at Layer 2 from the VLAN 20 gateway.
-
-The host's Layer-3 configuration and the switch's Layer-2 segmentation therefore disagreed.
-
-## Operational Lesson
-
-When a single host cannot reach its gateway but other hosts in the same subnet can, check the local path before changing routing. Verify:
-
-1. Physical interface state
-2. Host addressing
+1. Link/interface state
+2. Host IP settings
 3. Access VLAN
-4. MAC learning
-5. Gateway reachability
-
-This narrows the fault domain and avoids unnecessary changes elsewhere in the network.
+4. MAC address learning
+5. Default-gateway reachability
